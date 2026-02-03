@@ -1,1 +1,8 @@
 temp/
+.ccsproject
+.cproject
+.project
+Debug/
+.settings/
+targetConfigs/
+
