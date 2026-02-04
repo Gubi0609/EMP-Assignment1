@@ -26,6 +26,7 @@ int main(void)
 	SYSCTL_RCGC2_R = SYSCTL_RCGC2_GPIOF; // System Control Run-Mode Clock Gating Control
 
 	// Do a dummy read to insert a few cycles after enabling the peripheral
+	dummy = SYSCTL_RCGC2_R;
 
 	// Enable RGB (PF1 - PF3) as output and switch (PF4) as input
 	GPIO_PORTF_DIR_R = 0x0E; // 0000 1110 - Bit 1 is output, bit 0 is input
@@ -38,13 +39,17 @@ int main(void)
 
 	// Loop forever
     while(1){
-        if (GPIO_PORTF_DATA_R & 0x10) cnt++; // If switch pressed (HIGH), increment cnt
-
-		if (cnt > 8) cnt = 0;
-
-		GPIO_PORTF_DATA_R |= colors[cnt];
-
+        // Check if switch is pressed (active LOW with pull-up)
+        if (!(GPIO_PORTF_DATA_R & 0x10)) {
+            cnt = (cnt + 1) % 8;  // Cycle through 0-7
+            
+            // Wait for button release as to not increment indefinitely
+            while(!(GPIO_PORTF_DATA_R & 0x10));
         }
+        
+        // Set LED color (clear LED bits and set new color)
+        GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | colors[cnt];
+    }
 
 	return 0;
 }
