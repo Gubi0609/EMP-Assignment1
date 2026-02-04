@@ -88,12 +88,6 @@ int main(void)
     while(1){
         // Set LED color (clear LED bits and set new color)
         GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | colors[cnt];
-        
-        // Diagnostic: Also poll the switch to verify GPIO is working
-        // If switch is pressed (LOW), turn on blue LED momentarily
-        if (!(GPIO_PORTF_DATA_R & 0x10)) {
-            GPIO_PORTF_DATA_R |= 0x04; // Blue LED on
-        }
     }
 
 	return 0;
