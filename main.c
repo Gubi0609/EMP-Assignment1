@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdbool.h>
 #include "tm4c123gh6pm.h"
 
 // Initialize colors {PF1, PF2, PF3} = {r, b, g}
@@ -16,6 +17,27 @@ int colors[8] = {off, green, blue, cyan, red, yellow, magenta, white};
 
 // Current count = current color
 int cnt = 0;
+
+bool dirUp = true;
+bool autoMode = false;
+
+// The Interrupt Service Routine (ISR)
+void GPIOF_Handler(void) {
+	// For debounce
+	volatile int i;
+	
+	// Clear the interrupt flag for PF4 (must be done first)
+	GPIO_PORTF_ICR_R = 0x10;
+	
+	// Increment counter to cycle through colors
+	cnt = (cnt + 1) % 8;  // Cycle through 0-7
+	
+	// Simple debounce delay
+	for(i = 0; i < 100000; i++);
+
+	// Wait for button release as to not increment indefinitely
+	while(!(GPIO_PORTF_DATA_R & 0x10));
+}
 
 int main(void)
 {
@@ -37,18 +59,41 @@ int main(void)
 	// Enable digital function for PF1 - PF4
 	GPIO_PORTF_DEN_R = 0x1E;
 
+
+	// Set switch (PF4) as edge-sensitive
+	GPIO_PORTF_IS_R = 0x00;
+
+	// Trigger controlled by IEV
+	GPIO_PORTF_IBE_R = 0x00;
+
+	// Falling Edge Trigger
+	GPIO_PORTF_IEV_R = 0x00;
+
+	// Clear any Prior Interrupts
+	GPIO_PORTF_ICR_R = 0x10;
+
+	// Unmask interrupts for PF4
+	GPIO_PORTF_IM_R = 0x10;
+
+
+	// NVIC Configuration
+	// Enable interrupt 46 (GPIO Port F) in NVIC
+	// INT_GPIOF = 46 (vector table position)
+	// IRQ number = 46 - 16 = 30 (subtract ARM core exceptions)
+	// IRQ 30 is in NVIC_EN0_R at bit position 30
+	NVIC_EN0_R |= (1 << 30);
+
+
 	// Loop forever
     while(1){
-        // Check if switch is pressed (active LOW with pull-up)
-        if (!(GPIO_PORTF_DATA_R & 0x10)) {
-            cnt = (cnt + 1) % 8;  // Cycle through 0-7
-            
-            // Wait for button release as to not increment indefinitely
-            while(!(GPIO_PORTF_DATA_R & 0x10));
-        }
-        
         // Set LED color (clear LED bits and set new color)
         GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | colors[cnt];
+        
+        // Diagnostic: Also poll the switch to verify GPIO is working
+        // If switch is pressed (LOW), turn on blue LED momentarily
+        if (!(GPIO_PORTF_DATA_R & 0x10)) {
+            GPIO_PORTF_DATA_R |= 0x04; // Blue LED on
+        }
     }
 
 	return 0;
