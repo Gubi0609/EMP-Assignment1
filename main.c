@@ -29,9 +29,6 @@ int cnt = 0;
 bool dirUp = true;
 bool autoMode = false;
 
-// LED state for toggling
-volatile bool LEDon = false;
-
 // The Interrupt Service Routine (ISR)
 void GPIOF_Handler(void) {
 	// For debounce
@@ -52,7 +49,8 @@ void GPIOF_Handler(void) {
 
 // SysTick ISR - toggles LED every 200ms
 void SysTick_Handler(void) {
-	LEDon = !LEDon;
+	if (dirUp) cnt = (cnt + 1) % 8; // Increment within 0-7
+	else cnt = (cnt + 7) % 8; // Decrement within 0-7
 }
 
 int main(void)
@@ -100,6 +98,7 @@ int main(void)
 	// Enable systick interrupt
 	NVIC_ST_CTRL_R |= NVIC_ST_CTRL_INTEN;
 
+
 	// Set switch (PF4) as edge-sensitive
 	GPIO_PORTF_IS_R = 0x00;
 
@@ -115,7 +114,6 @@ int main(void)
 	// Unmask interrupts for PF4
 	GPIO_PORTF_IM_R = 0x10;
 
-
 	// NVIC Configuration
 	// Enable interrupt 46 (GPIO Port F) in NVIC
 	// INT_GPIOF = 46 (vector table position)
@@ -128,11 +126,8 @@ int main(void)
 
 	// Loop forever
     while(1){
-        if (LEDon) {
-			GPIO_PORTF_DATA_R |= green;
-		} else {
-			GPIO_PORTF_DATA_R &= ~0x0E;
-	}
+		// Set LED color (clear LED bits and set new color)
+		GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | colors[cnt];
     }
 
 	return 0;
