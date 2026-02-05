@@ -1,6 +1,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "tm4c123gh6pm.h"
+#include "systick.h"
+
+// Define timer
+#define TIM_1_SEC 200;
 
 // Initialize colors {PF1, PF2, PF3} = {r, b, g}
 const int off = 0x00; // 0000 0000
@@ -20,6 +24,9 @@ int cnt = 0;
 
 bool dirUp = true;
 bool autoMode = false;
+
+// ticks imported from systick.c
+extern int ticks;
 
 // The Interrupt Service Routine (ISR)
 void GPIOF_Handler(void) {
@@ -41,6 +48,12 @@ void GPIOF_Handler(void) {
 
 int main(void)
 {
+
+	// Enable systick timer according to convention
+	int alive_timer = TIM_1_SEC;
+
+	init_systick();
+
 	int dummy; // Dummy to do a few cycles
 
 	// Enable GPIO port F (used for RBG and switch)
@@ -86,8 +99,18 @@ int main(void)
 
 	// Loop forever
     while(1){
-        // Set LED color (clear LED bits and set new color)
-        GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | colors[cnt];
+		while(!ticks) {
+			// Will be executed every 5 ms according to systick.c
+			ticks--;
+
+			if(!--alive_timer) {
+				alive_timer = TIM_1_SEC;
+				cnt = (cnt+1) % 8;
+				
+				// Set LED color (clear LED bits and set new color)
+    		    GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | colors[cnt];
+			}
+		}
     }
 
 	return 0;
