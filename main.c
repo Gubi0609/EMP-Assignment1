@@ -9,6 +9,8 @@
 #define NVIC_INT_CTRL_UNPEND_SYST 0x02000000    // Unpend a systick int
 
 #define SYSTICK_PRIORITY    0x7E
+#define DOUBLE_CLICK_WINDOW 300  // ms window for double-click detection
+#define HOLD_THRESHOLD 2000      // ms for hold detection
 
 // Initialize colors {PF1, PF2, PF3} = {r, b, g}
 const int off = 0x00; // 0000 0000
@@ -29,6 +31,16 @@ int cnt = 0;
 bool dirUp = true;
 bool autoMode = false;
 
+// Millisecond counter (unsigned to handle overflow properly)
+volatile unsigned int milliseconds = 0;
+
+// Button state tracking
+volatile unsigned int lastPressTime = 0;
+volatile bool buttonPressed = false;
+volatile unsigned int buttonPressStartTime = 0;
+volatile bool holdDetected = false;
+volatile bool waitingForSecondClick = false;
+
 // The Interrupt Service Routine (ISR)
 void GPIOF_Handler(void) {
 	// For debounce
@@ -37,24 +49,84 @@ void GPIOF_Handler(void) {
 	// Clear the interrupt flag for PF4 (must be done first)
 	GPIO_PORTF_ICR_R = 0x10;
 	
-	// Increment counter to cycle through colors
-	cnt = (cnt + 1) % 8;  // Cycle through 0-7
-	
 	// Simple debounce delay
 	for(i = 0; i < 100000; i++);
-
-	// Wait for button release as to not increment indefinitely
-	while(!(GPIO_PORTF_DATA_R & 0x10));
+	
+	// If in auto mode, any button press exits auto mode
+	if (autoMode) {
+		autoMode = false;
+		return;
+	}
+	
+	unsigned int currentTime = milliseconds;
+	unsigned int timeDiff = currentTime - lastPressTime;
+	
+	// Check for double-click
+	if (waitingForSecondClick && timeDiff < DOUBLE_CLICK_WINDOW) {
+		// Double-click detected! Toggle direction
+		dirUp = !dirUp;
+		waitingForSecondClick = false;
+		holdDetected = true;  // Prevent hold and single-click actions
+	} else {
+		// Potential single click or hold - start tracking
+		waitingForSecondClick = true;
+		buttonPressed = true;
+		buttonPressStartTime = currentTime;
+		holdDetected = false;
+	}
+	
+	lastPressTime = currentTime;
+	
+	// Don't wait for release - let SysTick_Handler monitor the button state
 }
 
-// SysTick ISR - toggles LED every 200ms
+// SysTick ISR - runs every 200ms
 void SysTick_Handler(void) {
-	if (dirUp) cnt = (cnt + 1) % 8; // Increment within 0-7
-	else cnt = (cnt + 7) % 8; // Decrement within 0-7
+	// Update millisecond counter (200ms per tick)
+	milliseconds += 200;
+	
+	// Check for hold detection
+	if (buttonPressed && !holdDetected) {
+		// Check if button is still held down
+		if (!(GPIO_PORTF_DATA_R & 0x10)) {
+			unsigned int holdDuration = milliseconds - buttonPressStartTime;
+			if (holdDuration >= HOLD_THRESHOLD) {
+				// Hold detected! Toggle auto mode
+				autoMode = !autoMode;
+				holdDetected = true;
+				waitingForSecondClick = false;  // Cancel any pending double-click
+			}
+		} else {
+			// Button was released before hold threshold
+			buttonPressed = false;
+		}
+	}
+	
+	// Auto mode - cycle through colors
+	if (autoMode) {
+		if (dirUp) cnt = (cnt + 1) % 8; // Increment within 0-7
+		else cnt = (cnt + 7) % 8; // Decrement within 0-7
+	}
+	
+	// Reset waiting flag after window expires
+	if (waitingForSecondClick && (milliseconds - lastPressTime) >= DOUBLE_CLICK_WINDOW) {
+		waitingForSecondClick = false;
+		// Process single click if not hold
+		if (!holdDetected) {
+			// Single click: increment or decrement based on dirUp
+			if (dirUp) cnt = (cnt + 1) % 8;
+			else cnt = (cnt + 7) % 8;
+		}
+	}
 }
 
 int main(void)
 {
+
+	/*
+		--- Port F Configuration ---
+	*/
+
 	int dummy; // Dummy to do a few cycles
 
 	// Enable GPIO port F (used for RBG and switch)
@@ -74,7 +146,9 @@ int main(void)
 	GPIO_PORTF_DEN_R = 0x1E;
 
 
-	// Systick configuration
+	/*
+		--- Systick Configuration ---
+	*/
 
 	// Disable systick timer
 	NVIC_ST_CTRL_R &= ~(NVIC_ST_CTRL_ENABLE);
@@ -98,6 +172,9 @@ int main(void)
 	// Enable systick interrupt
 	NVIC_ST_CTRL_R |= NVIC_ST_CTRL_INTEN;
 
+	/*
+		--- Button Interrupt Configuration ---
+	*/
 
 	// Set switch (PF4) as edge-sensitive
 	GPIO_PORTF_IS_R = 0x00;
@@ -120,6 +197,7 @@ int main(void)
 	// IRQ number = 46 - 16 = 30 (subtract ARM core exceptions)
 	// IRQ 30 is in NVIC_EN0_R at bit position 30
 	NVIC_EN0_R |= (1 << (INT_GPIOF - INT_GPIOA));
+
 
 	// Enable and start systick timer
 	NVIC_ST_CTRL_R |= NVIC_ST_CTRL_ENABLE;
