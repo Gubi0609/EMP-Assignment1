@@ -2,6 +2,14 @@
 #include <stdbool.h>
 #include "tm4c123gh6pm.h"
 
+#define SYSTICK_RELOAD_VALUE 3200000 // 200 ms delay (16 MHz / 5 = 3,200,000 cycles)
+
+// Missing definitions in tm4c123gh6pm.h file
+#define NVIC_INT_CTRL_PEND_SYST   0x04000000    // Pend a systick int
+#define NVIC_INT_CTRL_UNPEND_SYST 0x02000000    // Unpend a systick int
+
+#define SYSTICK_PRIORITY    0x7E
+
 // Initialize colors {PF1, PF2, PF3} = {r, b, g}
 const int off = 0x00; // 0000 0000
 const int green = 0x08; // 0000 1000
@@ -21,6 +29,9 @@ int cnt = 0;
 bool dirUp = true;
 bool autoMode = false;
 
+// LED state for toggling
+volatile bool LEDon = false;
+
 // The Interrupt Service Routine (ISR)
 void GPIOF_Handler(void) {
 	// For debounce
@@ -37,6 +48,11 @@ void GPIOF_Handler(void) {
 
 	// Wait for button release as to not increment indefinitely
 	while(!(GPIO_PORTF_DATA_R & 0x10));
+}
+
+// SysTick ISR - toggles LED every 200ms
+void SysTick_Handler(void) {
+	LEDon = !LEDon;
 }
 
 int main(void)
@@ -59,6 +75,30 @@ int main(void)
 	// Enable digital function for PF1 - PF4
 	GPIO_PORTF_DEN_R = 0x1E;
 
+
+	// Systick configuration
+
+	// Disable systick timer
+	NVIC_ST_CTRL_R &= ~(NVIC_ST_CTRL_ENABLE);
+
+	// Set current timer to reload value
+	NVIC_ST_CURRENT_R = SYSTICK_RELOAD_VALUE;
+	// Set Reload valye in systick reload register
+	NVIC_ST_RELOAD_R = SYSTICK_RELOAD_VALUE;
+
+	// NVIC systick setup, vector number 15 in startup_css.c
+	// Clear pending systick interrupt request
+	NVIC_INT_CTRL_R |= NVIC_INT_CTRL_UNPEND_SYST;
+
+	// Set systick priority to 0x10. First clear, then set
+	NVIC_SYS_PRI3_R &= ~(NVIC_SYS_PRI3_TICK_M); 
+	NVIC_SYS_PRI3_R |= (NVIC_SYS_PRI3_TICK_M & (SYSTICK_PRIORITY<<NVIC_SYS_PRI3_TICK_S));
+
+	// Select systick clock source, use core clock
+	NVIC_ST_CTRL_R |= NVIC_ST_CTRL_CLK_SRC;
+
+	// Enable systick interrupt
+	NVIC_ST_CTRL_R |= NVIC_ST_CTRL_INTEN;
 
 	// Set switch (PF4) as edge-sensitive
 	GPIO_PORTF_IS_R = 0x00;
@@ -83,11 +123,16 @@ int main(void)
 	// IRQ 30 is in NVIC_EN0_R at bit position 30
 	NVIC_EN0_R |= (1 << (INT_GPIOF - INT_GPIOA));
 
+	// Enable and start systick timer
+	NVIC_ST_CTRL_R |= NVIC_ST_CTRL_ENABLE;
 
 	// Loop forever
     while(1){
-        // Set LED color (clear LED bits and set new color)
-        GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | colors[cnt];
+        if (LEDon) {
+			GPIO_PORTF_DATA_R |= green;
+		} else {
+			GPIO_PORTF_DATA_R &= ~0x0E;
+	}
     }
 
 	return 0;
