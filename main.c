@@ -81,7 +81,7 @@ int main(void)
 	// INT_GPIOF = 46 (vector table position)
 	// IRQ number = 46 - 16 = 30 (subtract ARM core exceptions)
 	// IRQ 30 is in NVIC_EN0_R at bit position 30
-	NVIC_EN0_R |= (1 << 30);
+	NVIC_EN0_R |= (1 << (INT_GPIOF - INT_GPIOA));
 
 
 	// Loop forever
