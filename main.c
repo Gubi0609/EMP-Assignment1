@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include "tm4c123gh6pm.h"
 
-#define SYSTICK_RELOAD_VALUE 3200000 // 200 ms delay (16 MHz / 5 = 3,200,000 cycles)
+#define SYSTICK_RELOAD_VALUE 3199999 // 200 ms delay (16 MHz / 5 - 1= 3,199,999 cycles)
 
 // Missing definitions in tm4c123gh6pm.h file
 #define NVIC_INT_CTRL_PEND_SYST   0x04000000    // Pend a systick int
